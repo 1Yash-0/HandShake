@@ -1,0 +1,11 @@
+# Build artifacts
+out/
+cache/
+broadcast/
+
+# Secrets — never commit
+.env
+.env.local
+
+# Dependencies (managed via forge install --no-git)
+lib/

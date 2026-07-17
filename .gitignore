@@ -1,0 +1,37 @@
+# Project context docs — keep local, never commit
+competitioncontext.md
+idea.md
+implementation.md
+
+# Agent tooling & installed skills (third-party, reinstalled via skills-lock.json)
+/.agents/
+/.claude/
+/.zcode/
+skills-lock.json
+
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+monskills-keystore/
+keystore/
+
+# Node / Next.js (for when we scaffold web/)
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# Foundry build artifacts (contracts/ has its own .gitignore too — belt and braces)
+cache/
+out/
+broadcast/
+lib/
+
+# OS junk
+.DS_Store
+Thumbs.db
