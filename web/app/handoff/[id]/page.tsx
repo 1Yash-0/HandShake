@@ -7,6 +7,7 @@ import {
   useReadContract,
   useWriteContract,
   useChainId,
+  usePublicClient,
 } from "wagmi";
 import {
   ArrowLeft,
@@ -35,6 +36,7 @@ import {
   exportKeyRaw,
   sha256Hex,
 } from "@/lib/crypto";
+import { conciseWalletError } from "@/lib/walletError";
 
 /**
  * Freelancer handoff page — `/handoff/<id>`. This is where the magic happens:
@@ -75,13 +77,14 @@ function HandoffInner({ params }: { params: Promise<{ id: string }> }) {
 
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const publicClient = usePublicClient({ chainId: CHAIN_ID });
   const { writeContractAsync } = useWriteContract();
 
   const [file, setFile] = useState<File | null>(null);
   const [stage, setStage] = useState<"idle" | "encrypting" | "uploading" | "storing-key" | "submitting" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
-  const [committedHash, setCommittedHash] = useState<string | null>(null);
+  const [preparedDelivery, setPreparedDelivery] = useState<{ ciphertextHash: `0x${string}` } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: deal, isLoading, refetch } = useReadContract({
@@ -125,9 +128,15 @@ function HandoffInner({ params }: { params: Promise<{ id: string }> }) {
     [deal],
   );
 
-  const isFreelancer = isConnected && !!address && !!d && address.toLowerCase() === d.freelancer.toLowerCase();
-  const canSubmit = dealId !== null && d?.state === DealState.Funded && isFreelancer;
   const onWrongChain = isConnected && chainId !== CHAIN_ID;
+  const isFreelancer = isConnected && !!address && !!d && address.toLowerCase() === d.freelancer.toLowerCase();
+  const preparedMatchesReview = !!preparedDelivery
+    && d?.state === DealState.UnderReview
+    && d.ciphertextHash.toLowerCase() === preparedDelivery.ciphertextHash.toLowerCase();
+  const canSubmit = dealId !== null
+    && isFreelancer
+    && !onWrongChain
+    && (d?.state === DealState.Funded || preparedMatchesReview);
 
   // ─── Hooks done. Now branch on validity. ────────────────────────────────
   if (dealId === null) {
@@ -159,75 +168,137 @@ function HandoffInner({ params }: { params: Promise<{ id: string }> }) {
     setError(null);
     if (!file || !canSubmit || dealId === null) return;
 
+    // Hard guard: never encrypt or touch storage while the wallet isn't on
+    // Monad. canSubmit already disables the button, but this defends against
+    // a chain switch between render and click.
+    if (onWrongChain) {
+      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to submit.`);
+      return;
+    }
+
+    // Reconciliation: a prior attempt already mined (or the deal was already
+    // submitted) and the onchain ciphertext hash matches our prepared one.
+    // Nothing more to do onchain — show done.
+    if (preparedMatchesReview) {
+      setStage("done");
+      return;
+    }
+
+    const existing = preparedDelivery?.ciphertextHash ?? null;
+
     try {
-      setStage("encrypting");
-      const aesKey = await generateAesKey();
-      const { ciphertext, iv } = await encryptFile(file, aesKey);
+      // targetHash is assigned on every path that reaches the onchain submit:
+      //   - retry path (existing != null): reuse the prepared hash, skip storage
+      //   - fresh path (existing == null): encrypt + upload + store key, then
+      //     record the prepared delivery so a later retry only re-sends the tx.
+      let targetHash: `0x${string}`;
+      if (existing) {
+        targetHash = existing;
+      } else {
+        setStage("encrypting");
+        const aesKey = await generateAesKey();
+        const { ciphertext, iv } = await encryptFile(file, aesKey);
 
-      // Hash the ciphertext — this is what goes onchain.
-      const cipherHash = await sha256Hex(ciphertext);
-      setCommittedHash(cipherHash);
+        // Hash the ciphertext — this is what goes onchain.
+        const cipherHash = await sha256Hex(ciphertext);
+        targetHash = cipherHash;
 
-      // POST ciphertext to Vercel Blob. We don't need the returned URL — the
-      // blob/list + blob/sidecar routes derive it deterministically from dealId.
-      setStage("uploading");
-      const upRes = await fetch(`/api/upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream", "x-deal-id": dealId.toString() },
-        body: ciphertext,
-      });
-      if (!upRes.ok) {
-        const j = await upRes.json().catch(() => ({}));
-        throw new Error(j.error || `upload failed (HTTP ${upRes.status})`);
+        // POST ciphertext to Vercel Blob. We don't need the returned URL — the
+        // blob/list + blob/sidecar routes derive it deterministically from dealId.
+        setStage("uploading");
+        const upRes = await fetch(`/api/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream", "x-deal-id": dealId.toString() },
+          body: ciphertext,
+        });
+        if (!upRes.ok) {
+          const j = await upRes.json().catch(() => ({}));
+          throw new Error(j.error || `upload failed (HTTP ${upRes.status})`);
+        }
+        await upRes.json();
+
+        // Upload a sidecar with the IV + filename + size so the client can
+        // reconstruct the original on unlock.
+        const sidecar = {
+          iv: Buffer.from(iv).toString("base64"),
+          name: file.name,
+          size: file.size,
+          contentType: file.type || "application/octet-stream",
+        };
+        const sidecarRes = await fetch(`/api/blob/sidecar?dealId=${dealId.toString()}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sidecar),
+        });
+        if (!sidecarRes.ok) {
+          // non-fatal — the unlock path can still derive the IV from the
+          // sidecar route's listing later. For the demo we surface a hint.
+          console.warn("sidecar upload failed", sidecarRes.status);
+        }
+
+        // Store the raw AES key — gated to release on onchain Released.
+        setStage("storing-key");
+        const rawKey = await exportKeyRaw(aesKey);
+        const keyRes = await fetch(`/api/key/store`, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream", "x-deal-id": dealId.toString() },
+          body: rawKey,
+        });
+        if (!keyRes.ok) {
+          const j = await keyRes.json().catch(() => ({}));
+          throw new Error(j.error || `key store failed (HTTP ${keyRes.status})`);
+        }
+
+        // Prepared delivery: ciphertext + sidecar + key are stored. If the
+        // onchain submit below fails, retry skips everything above and only
+        // re-sends submitDeliverable.
+        setPreparedDelivery({ ciphertextHash: targetHash });
       }
-      await upRes.json();
 
-      // Upload a sidecar with the IV + filename + size so the client can
-      // reconstruct the original on unlock.
-      const sidecar = {
-        iv: Buffer.from(iv).toString("base64"),
-        name: file.name,
-        size: file.size,
-        contentType: file.type || "application/octet-stream",
-      };
-      const sidecarRes = await fetch(`/api/blob/sidecar?dealId=${dealId.toString()}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sidecar),
-      });
-      if (!sidecarRes.ok) {
-        // non-fatal — the unlock path can still derive the IV from the
-        // sidecar route's listing later. For the demo we surface a hint.
-        console.warn("sidecar upload failed", sidecarRes.status);
-      }
-
-      // Store the raw AES key — gated to release on onchain Released.
-      setStage("storing-key");
-      const rawKey = await exportKeyRaw(aesKey);
-      const keyRes = await fetch(`/api/key/store`, {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream", "x-deal-id": dealId.toString() },
-        body: rawKey,
-      });
-      if (!keyRes.ok) {
-        const j = await keyRes.json().catch(() => ({}));
-        throw new Error(j.error || `key store failed (HTTP ${keyRes.status})`);
-      }
-
-      // Submit the hash onchain.
+      // Submit the hash onchain. Pass chainId so the wallet targets Monad
+      // testnet even if it would otherwise default to its current chain.
       setStage("submitting");
       const tx = await writeContractAsync({
         address: HANDSHAKE_ESCROW_ADDRESS,
         abi: HANDSHAKE_ESCROW_ABI,
         functionName: "submitDeliverable",
-        args: [dealId, cipherHash],
+        chainId: CHAIN_ID,
+        args: [dealId, targetHash],
       });
       setTxHash(tx);
-      await new Promise((r) => setTimeout(r, 1500));
-      await refetch();
-      setStage("done");
+
+      // Await the receipt on Monad, then refetch and only flip to done once
+      // the onchain deal is UnderReview with a matching ciphertext hash.
+      if (!publicClient) {
+        throw new Error("Monad client unavailable — cannot confirm receipt.");
+      }
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
+      if (receipt.status === "reverted") {
+        throw new Error("Transaction reverted onchain — retry to resubmit.");
+      }
+      const { data: freshDeal } = await refetch();
+      const ft = freshDeal as DealTuple | undefined;
+      const freshState = ft ? (Number(ft[8]) as 0 | 1 | 2 | 3 | 4 | 5 | 6) : undefined;
+      const freshHash = ft ? ft[7] : undefined;
+      if (
+        freshState === DealState.UnderReview
+        && freshHash?.toLowerCase() === targetHash.toLowerCase()
+      ) {
+        setStage("done");
+      } else {
+        // Receipt confirmed but the read hasn't caught up. Don't falsely show
+        // done — preserve the attempt; the preparedMatchesReview gate will
+        // reconcile on the next render/click.
+        setError("Submitted onchain — the deal is confirming. Refresh or retry to verify.");
+        setStage("idle");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      // Preserve preparedDelivery + txHash on any failure (including the
+      // ambiguous "broadcast but no receipt" case) so a retry only re-sends
+      // the onchain tx and never re-encrypts/re-uploads. Log the full error
+      // for debugging; surface only a concise, actionable message.
+      console.error("handoff submit failed", err);
+      setError(conciseWalletError(err));
       setStage("idle");
     }
   }
@@ -313,11 +384,11 @@ function HandoffInner({ params }: { params: Promise<{ id: string }> }) {
                   The ciphertext hash is committed onchain. The client can now review and approve — when
                   they do, the contract releases payment to you and the decryption key to them.
                 </p>
-                {committedHash && (
+                {preparedDelivery && (
                   <div className="stack-sm">
                     <div className="step-num">Ciphertext hash (onchain)</div>
                     <code className="mono" style={{ fontSize: ".75rem", wordBreak: "break-all", color: "var(--blue)" }}>
-                      {committedHash}
+                      {preparedDelivery.ciphertextHash}
                     </code>
                   </div>
                 )}

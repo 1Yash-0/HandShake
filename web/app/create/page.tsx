@@ -21,6 +21,7 @@ import {
   CHAIN_ID,
 } from "@/lib/contract";
 import { monadTestnet } from "@/lib/monad";
+import { conciseWalletError } from "@/lib/walletError";
 
 /**
  * Create-deal page. The first real wagmi write screen.
@@ -90,6 +91,10 @@ function CreateDealInner() {
   async function mintUsdc() {
     if (!address) return;
     setError(null);
+    if (onWrongChain) {
+      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to mint.`);
+      return;
+    }
     setMinting(true);
     try {
       // Mint 1,000 test USDC — plenty for several demo deals.
@@ -98,6 +103,7 @@ function CreateDealInner() {
         address: MOCK_USDC_ADDRESS,
         abi: MOCK_USDC_ABI,
         functionName: "mint",
+        chainId: CHAIN_ID,
         args: [address, amount],
       });
       // wait for the receipt via sendTransactionSync'd path — we already submitted,
@@ -107,7 +113,8 @@ function CreateDealInner() {
       await refetchBalance();
       setMintedAmount(amount);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error("mint failed", err);
+      setError(conciseWalletError(err));
     } finally {
       setMinting(false);
     }
@@ -166,6 +173,7 @@ function CreateDealInner() {
         address: MOCK_USDC_ADDRESS,
         abi: MOCK_USDC_ABI,
         functionName: "approve",
+        chainId: CHAIN_ID,
         args: [HANDSHAKE_ESCROW_ADDRESS, amount],
       });
       void approveTx;
@@ -176,6 +184,7 @@ function CreateDealInner() {
         address: HANDSHAKE_ESCROW_ADDRESS,
         abi: HANDSHAKE_ESCROW_ABI,
         functionName: "createDeal",
+        chainId: CHAIN_ID,
         args: [freelancer, arbiter, amount, deadline, reviewWindow],
       });
       void createTx;
@@ -188,7 +197,8 @@ function CreateDealInner() {
       const newId = newCountBig - 1n;
       router.push(`/deal/${newId.toString()}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error("create deal failed", err);
+      setError(conciseWalletError(err));
     } finally {
       setSubmitting(false);
     }

@@ -39,6 +39,7 @@ import {
 import { addressLink } from "@/lib/monad";
 import { importKeyRaw, decryptFile } from "@/lib/crypto";
 import { useSession } from "@/lib/auth";
+import { conciseWalletError } from "@/lib/walletError";
 
 /**
  * Client deal page — `/deal/<id>`. Reads deal state via `getDeal(id)` and
@@ -109,7 +110,6 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
   });
 
   const onWrongChain = isConnected && chainId !== CHAIN_ID;
-  void onWrongChain; // surfaced via per-button disabled state — writeContractAsync reverts off-chain
 
   // Tuple return of HandshakeEscrow.getDeal — see contracts/src/HandshakeEscrow.sol.
   type DealTuple = readonly [
@@ -195,19 +195,25 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
 
   async function fund() {
     setError(null);
+    if (onWrongChain) {
+      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to fund.`);
+      return;
+    }
     setSubmitting("fund");
     try {
       const tx = await writeContractAsync({
         address: HANDSHAKE_ESCROW_ADDRESS,
         abi: HANDSHAKE_ESCROW_ABI,
         functionName: "fundDeal",
+        chainId: CHAIN_ID,
         args: [dealId!],
       });
       void tx;
       await new Promise((r) => setTimeout(r, 1500));
       await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error("fund failed", err);
+      setError(conciseWalletError(err));
     } finally {
       setSubmitting(null);
     }
@@ -215,19 +221,25 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
 
   async function approve() {
     setError(null);
+    if (onWrongChain) {
+      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to approve.`);
+      return;
+    }
     setSubmitting("approve");
     try {
       const tx = await writeContractAsync({
         address: HANDSHAKE_ESCROW_ADDRESS,
         abi: HANDSHAKE_ESCROW_ABI,
         functionName: "approveDeal",
+        chainId: CHAIN_ID,
         args: [dealId!],
       });
       void tx;
       await new Promise((r) => setTimeout(r, 1500));
       await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error("approve failed", err);
+      setError(conciseWalletError(err));
     } finally {
       setSubmitting(null);
     }
@@ -235,19 +247,25 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
 
   async function dispute() {
     setError(null);
+    if (onWrongChain) {
+      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to dispute.`);
+      return;
+    }
     setSubmitting("dispute");
     try {
       const tx = await writeContractAsync({
         address: HANDSHAKE_ESCROW_ADDRESS,
         abi: HANDSHAKE_ESCROW_ABI,
         functionName: "openDispute",
+        chainId: CHAIN_ID,
         args: [dealId!],
       });
       void tx;
       await new Promise((r) => setTimeout(r, 1500));
       await refetch();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      console.error("dispute failed", err);
+      setError(conciseWalletError(err));
     } finally {
       setSubmitting(null);
     }
@@ -333,6 +351,7 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
           onUnlock={unlockOriginal}
           submitting={submitting}
           unlocking={unlocking}
+          onWrongChain={onWrongChain}
         />
 
         <div className="grid-2">
@@ -375,11 +394,12 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
                 <p className="text-muted" style={{ margin: 0, fontSize: ".875rem" }}>
                   You approved the USDC pull during deal creation. Now lock it in the contract.
                 </p>
-                <button className="btn btn-blue" onClick={fund} disabled={submitting !== null || !actAsClient}>
+                <button className="btn btn-blue" onClick={fund} disabled={submitting !== null || !actAsClient || onWrongChain}>
                   {submitting === "fund" ? <Loader2 size={16} className="animate-spin" /> : <Coins size={16} />}
                   Fund {formatUsdc(d.amount)} USDC
                 </button>
                 {!actAsClient && <span className="hint">Only the deal client can fund.</span>}
+                {actAsClient && onWrongChain && <span className="hint">Switch to Monad testnet to fund.</span>}
               </>
             )}
 
@@ -406,15 +426,16 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
                   The freelancer submitted the encrypted file. Review the preview, then approve to release
                   payment and unlock the original.
                 </p>
-                <button className="btn btn-blue" onClick={approve} disabled={submitting !== null || !actAsClient}>
+                <button className="btn btn-blue" onClick={approve} disabled={submitting !== null || !actAsClient || onWrongChain}>
                   {submitting === "approve" ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
                   Approve & release
                 </button>
-                <button className="btn btn-danger" onClick={dispute} disabled={submitting !== null || !actAsClient}>
+                <button className="btn btn-danger" onClick={dispute} disabled={submitting !== null || !actAsClient || onWrongChain}>
                   {submitting === "dispute" ? <Loader2 size={16} className="animate-spin" /> : <AlertTriangle size={16} />}
                   Open dispute
                 </button>
                 {!actAsClient && <span className="hint">Only the deal client can approve or dispute.</span>}
+                {actAsClient && onWrongChain && <span className="hint">Switch to Monad testnet to approve or dispute.</span>}
               </>
             )}
 
@@ -562,6 +583,7 @@ function RoleBanner({
   onUnlock,
   submitting,
   unlocking,
+  onWrongChain,
 }: {
   role: "client" | "freelancer" | undefined;
   isClient: boolean;
@@ -573,6 +595,7 @@ function RoleBanner({
   onUnlock: () => Promise<void>;
   submitting: "fund" | "approve" | "dispute" | null;
   unlocking: boolean;
+  onWrongChain: boolean;
 }) {
   const youAreParty = isClient || isFreelancer;
   // Self-deal disambiguation: when the same address is both parties, prefer
@@ -585,12 +608,15 @@ function RoleBanner({
     : null;
 
   // Determine the primary CTA for the user's side in this deal's state.
+  // CTAs that trigger onchain writes are disabled on the wrong chain; the
+  // freelancer "Encrypt & submit" link isn't because /handoff does its own
+  // guard + retries the onchain step independently.
   let cta: { label: string; tint: "blue" | "lime"; onClick?: () => void; href?: string; busy?: boolean; disabled?: boolean } | null = null;
   if (yourSide === "client") {
     if (state === DealState.Created) {
-      cta = { label: "Fund escrow", tint: "blue", onClick: () => void onFund(), busy: submitting === "fund" };
+      cta = { label: "Fund escrow", tint: "blue", onClick: () => void onFund(), busy: submitting === "fund", disabled: onWrongChain };
     } else if (state === DealState.UnderReview) {
-      cta = { label: "Approve & release", tint: "blue", onClick: () => void onApprove(), busy: submitting === "approve" };
+      cta = { label: "Approve & release", tint: "blue", onClick: () => void onApprove(), busy: submitting === "approve", disabled: onWrongChain };
     } else if (state === DealState.Released) {
       cta = { label: "Unlock original", tint: "blue", onClick: () => void onUnlock(), busy: unlocking };
     }
