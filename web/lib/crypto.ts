@@ -38,9 +38,14 @@ if (!SUBTLE) {
   throw new Error("crypto.subtle unavailable — Handshake crypto requires a secure browser context.");
 }
 
-/** AES-GCM 256, non-extractable — we never want the raw key material leaving Web Crypto. */
+/**
+ * AES-GCM 256, extractable — the raw key MUST be exportable so we can ship the
+ * 32 bytes to /api/key/store, which gates release to onchain `Released`. The
+ * key never touches disk on the client; exportKeyRaw() pulls it just long
+ * enough to POST it, then the request body is GC'd.
+ */
 export async function generateAesKey(): Promise<CryptoKey> {
-  return SUBTLE!.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  return SUBTLE!.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
 }
 
 /** Export the key as raw bytes — only used to ship to the key-release API, never to disk. */
