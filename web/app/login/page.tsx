@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAccount, useConnect, useChainId, useSignMessage } from "wagmi";
+import { useAccount, useConnect, useChainId, useSwitchChain, useSignMessage } from "wagmi";
 import {
   ArrowRight,
   Briefcase,
@@ -240,6 +240,7 @@ function WalletConnect({
   const { address, isConnected } = useAccount();
   const { connectors, connectAsync } = useConnect();
   const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
 
   const [stage, setStage] = useState<Stage>("connect");
@@ -253,13 +254,22 @@ function WalletConnect({
   const RoleIcon = role === "client" ? Briefcase : Wallet;
   const roleAccent = role === "client" ? "var(--blue)" : "oklch(60% .15 115)";
 
-  // If already connected, jump straight to signing.
+  // If already connected, jump straight to signing. If already connected
+  // but on the wrong chain, auto-switch to Monad first — then the re-render
+  // (onWrongChain flips to false) fires this effect again and signs.
   useEffect(() => {
-    if (isConnected && !onWrongChain && stage === "connect") {
+    if (!isConnected) return;
+    if (onWrongChain) {
+      void switchChainAsync({ chainId: monadTestnet.id }).catch((err) => {
+        console.error("chain switch rejected", err);
+      });
+      return;
+    }
+    if (stage === "connect") {
       void beginSign();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, onWrongChain]);
+  }, [isConnected, onWrongChain, switchChainAsync]);
 
   async function connectAndSign() {
     setError(null);
@@ -354,18 +364,9 @@ function WalletConnect({
 
         {isConnected && onWrongChain && (
           <>
-            <div className="pill pill-red" style={{ alignSelf: "flex-start" }}>
-              <AlertTriangle size={12} /> Your wallet is on chain {chainId}. Switch to Monad testnet.
+            <div className="pill pill-amber" style={{ alignSelf: "flex-start" }}>
+              <AlertTriangle size={12} /> Switching to Monad testnet… approve in your wallet.
             </div>
-            <button
-              className="btn btn-blue"
-              onClick={async () => {
-                if (!metaMask) return;
-                await connectAsync({ connector: metaMask, chainId: monadTestnet.id });
-              }}
-            >
-              Switch to Monad testnet
-            </button>
           </>
         )}
 

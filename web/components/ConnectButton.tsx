@@ -1,6 +1,6 @@
 "use client";
 
-import { useAccount, useConnect, useDisconnect, useChainId } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi";
 import { useMemo } from "react";
 import { Wallet, LogOut, Plus } from "lucide-react";
 import { monadTestnet } from "@/lib/monad";
@@ -17,6 +17,7 @@ export function ConnectButton() {
   const { address, isConnected } = useAccount();
   const { connectors, connectAsync } = useConnect();
   const { disconnectAsync } = useDisconnect();
+  const { switchChainAsync } = useSwitchChain();
   const chainId = useChainId();
 
   const metaMask = connectors.find((c) => c.id === "io.metamask" || c.name.toLowerCase().includes("metamask")) ?? connectors[0];
@@ -53,8 +54,11 @@ export function ConnectButton() {
       <button
         className="btn btn-danger"
         onClick={async () => {
-          if (!metaMask) return;
-          await connectAsync({ connector: metaMask, chainId: monadTestnet.id });
+          try {
+            await switchChainAsync({ chainId: monadTestnet.id });
+          } catch (err) {
+            console.error("chain switch rejected", err);
+          }
         }}
       >
         <Plus size={16} />
