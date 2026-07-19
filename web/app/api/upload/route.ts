@@ -48,11 +48,24 @@ export async function POST(req: NextRequest) {
       .join("");
 
   const pathname = `handshake/deal-${dealId}/${Date.now()}.bin`;
-  const blob = await put(pathname, body, {
-    access: "public",
-    addRandomSuffix: false,
-    contentType: "application/octet-stream",
-  });
+  let blob;
+  try {
+    blob = await put(pathname, body, {
+      access: "public",
+      addRandomSuffix: false,
+      contentType: "application/octet-stream",
+    });
+  } catch (err) {
+    // Surface the actual Blob error to the client + logs — without this
+    // the route returns a generic 500 and the real cause (bad token, store
+    // not found, billing limit, etc.) is invisible.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[upload] blob put failed:", msg);
+    return NextResponse.json(
+      { error: `blob put failed: ${msg}` },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json({
     url: blob.url,

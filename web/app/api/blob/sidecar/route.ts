@@ -28,11 +28,21 @@ export async function POST(req: NextRequest) {
   }
 
   const pathname = `handshake/deal-${dealId}/${Date.now()}.bin.meta.json`;
-  const blob = await put(pathname, text, {
-    access: "public",
-    addRandomSuffix: false,
-    contentType: "application/json",
-  });
+  let blob;
+  try {
+    blob = await put(pathname, text, {
+      access: "public",
+      addRandomSuffix: false,
+      contentType: "application/json",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[blob/sidecar POST] put failed:", msg);
+    return NextResponse.json(
+      { error: `blob put failed: ${msg}` },
+      { status: 502 },
+    );
+  }
 
   return NextResponse.json({ url: blob.url });
 }
@@ -45,10 +55,20 @@ export async function GET(req: NextRequest) {
   const dealId = url.searchParams.get("dealId");
   if (!dealId) return NextResponse.json({ error: "missing dealId" }, { status: 400 });
 
-  const listed = await list({
-    prefix: `handshake/deal-${dealId}/`,
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
+  let listed;
+  try {
+    listed = await list({
+      prefix: `handshake/deal-${dealId}/`,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[blob/sidecar GET] list failed:", msg);
+    return NextResponse.json(
+      { error: `blob list failed: ${msg}` },
+      { status: 502 },
+    );
+  }
   const sidecars = listed.blobs
     .filter((b) => b.pathname.endsWith(".bin.meta.json"))
     .sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime());
