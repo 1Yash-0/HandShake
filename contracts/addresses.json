@@ -1,0 +1,52 @@
+{
+  "comment": "Deployed on Monad testnet (chainId 10143) via forge script Deploy.s.sol --broadcast.",
+  "chainId": 10143,
+  "chainName": "monad-testnet",
+  "rpcUrl": "https://testnet-rpc.monad.xyz",
+  "deployer": "0xac754bF971dE8DB39d32F36754535d59494474bC",
+  "deployTx": {
+    "MockUSDC": "0x84509e0d816a545f0aff61821f5b08edb930d9207b73b8d5c654064ec6136e0e",
+    "HandshakeEscrow": "0x6f5542ceae4b57f241d516a63269c27c0156fc459246609cb6ae6eeedd30603b"
+  },
+  "contracts": {
+    "MockUSDC": {
+      "address": "0x6499aB00482dCc693Fd844f162378E215d93Aac9",
+      "name": "Mock USD Coin",
+      "symbol": "USDC",
+      "decimals": 6,
+      "fqn": "src/MockUSDC.sol:MockUSDC",
+      "constructorArgs": []
+    },
+    "HandshakeEscrow": {
+      "address": "0x989EA8716ba301185798223a44fBb84713AEEFC1",
+      "fqn": "src/HandshakeEscrow.sol:HandshakeEscrow",
+      "constructorArgs": ["address:0x6499aB00482dCc693Fd844f162378E215d93Aac9"]
+    }
+  },
+  "explorers": {
+    "MonadVision": "https://testnet.monadvision.com",
+    "Socialscan": "https://socialscan.com/monadtestnet",
+    "Monadscan": "https://testnet.monadscan.com"
+  },
+  "verification": {
+    "api": "https://agents.devnads.com/v1/verify",
+    "compilerVersion": "v0.8.28+commit.7893614a",
+    "MockUSDC": {
+      "status": "verified",
+      "explorers": {
+        "monadvision": "https://testnet.monadvision.com/address/0x6499aB00482dCc693Fd844f162378E215d93Aac9",
+        "monadscan": "https://testnet.monadscan.com/address/0x6499aB00482dCc693Fd844f162378E215d93Aac9"
+      },
+      "monadscanGuid": "ahesc6l5eybytswahghqidgazrgex882w2yptwvanvhky35f6i"
+    },
+    "HandshakeEscrow": {
+      "status": "verified",
+      "constructorArgsAbi": "0000000000000000000000006499ab00482dcc693fd844f162378e215d93aac9",
+      "explorers": {
+        "monadvision": "https://testnet.monadvision.com/address/0x989EA8716ba301185798223a44fBb84713AEEFC1",
+        "monadscan": "https://testnet.monadscan.com/address/0x989EA8716ba301185798223a44fBb84713AEEFC1"
+      },
+      "monadscanGuid": "2qfwzw14scqxyvqa2ruggkmi3nkwcxk19e6int32nqvjjqplvq"
+    }
+  }
+}

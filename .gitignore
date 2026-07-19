@@ -8,6 +8,13 @@ implementation.md
 /.claude/
 /.zcode/
 skills-lock.json
+.monskills
+/docs/superpowers/
+/web/AGENTS.md
+/web/CLAUDE.md
+
+# One-off funding helper (hardcoded WSL keystore path — not portable, no secrets)
+/scripts/
 
 # Secrets — never commit
 .env
@@ -26,11 +33,11 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 
-# Foundry build artifacts (contracts/ has its own .gitignore too — belt and braces)
-cache/
-out/
-broadcast/
-lib/
+# Foundry build artifacts (scoped to contracts/ — bare 'lib/' would also match web/lib/)
+/contracts/cache/
+/contracts/out/
+/contracts/broadcast/
+/contracts/lib/
 
 # OS junk
 .DS_Store
