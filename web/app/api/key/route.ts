@@ -29,23 +29,25 @@ const client = createPublicClient({
 });
 
 // Re-exported here so the route doesn't need the Blob SDK on the read path.
-async function fetchKeyFromBlob(dealId: string): Promise<Uint8Array | null> {
-  // The freelancer uploaded the key to a known path after submitDeliverable.
-  // We don't have the URL ahead of time — but the path is deterministic.
-  // In production you'd use a KMS or DB; for the hackathon, deterministic Blob path.
+// Returns the key bytes on success, or `{ error }` on failure so the caller
+// can surface the actual cause (token missing, store down, fetch failed).
+async function fetchKeyFromBlob(
+  dealId: string,
+): Promise<Uint8Array | { error: string } | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) return null;
+  if (!token) return { error: "BLOB_READ_WRITE_TOKEN not configured" };
   try {
-    // Vercel Blob list → fetch by prefix
     const { list } = await import("@vercel/blob");
     const listed = await list({ prefix: `handshake/keys/deal-${dealId}.key`, token });
     if (listed.blobs.length === 0) return null;
     const res = await fetch(listed.blobs[0].url);
-    if (!res.ok) return null;
+    if (!res.ok) return { error: `blob fetch http ${res.status}` };
     const buf = new Uint8Array(await res.arrayBuffer());
     return buf;
-  } catch {
-    return null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[key GET] blob fetch failed:", msg);
+    return { error: `blob fetch failed: ${msg}` };
   }
 }
 
@@ -106,6 +108,12 @@ export async function GET(req: NextRequest) {
 
   // 3. State is Released — fetch the stored key.
   const key = await fetchKeyFromBlob(dealIdRaw);
+  if (key && "error" in key) {
+    return NextResponse.json(
+      { error: key.error, state },
+      { status: 502 },
+    );
+  }
   if (!key) {
     return NextResponse.json(
       { error: "key not found for released deal", state },

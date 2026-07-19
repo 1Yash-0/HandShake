@@ -19,10 +19,20 @@ export async function GET(req: NextRequest) {
   if (!dealId) return NextResponse.json({ error: "missing dealId" }, { status: 400 });
 
   const { list } = await import("@vercel/blob");
-  const listed = await list({
-    prefix: `handshake/deal-${dealId}/`,
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
+  let listed;
+  try {
+    listed = await list({
+      prefix: `handshake/deal-${dealId}/`,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[blob/list] list failed:", msg);
+    return NextResponse.json(
+      { error: `blob list failed: ${msg}` },
+      { status: 502 },
+    );
+  }
   // Most recent first — the .bin files only (skip .meta.json sidecars).
   const bins = listed.blobs
     .filter((b) => b.pathname.endsWith(".bin"))
