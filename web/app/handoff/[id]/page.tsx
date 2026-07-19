@@ -87,7 +87,11 @@ function HandoffInner({ params }: { params: Promise<{ id: string }> }) {
   const [preparedDelivery, setPreparedDelivery] = useState<{ ciphertextHash: `0x${string}` } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Pin the read to Monad so it uses the Monad public client regardless of
+  // the wallet's current chain. The write below still auto-switches via
+  // ensureMonad; this just keeps the page from crashing on a wrong-chain render.
   const { data: deal, isLoading, refetch } = useReadContract({
+    chainId: CHAIN_ID,
     address: HANDSHAKE_ESCROW_ADDRESS,
     abi: HANDSHAKE_ESCROW_ABI,
     functionName: "getDeal",

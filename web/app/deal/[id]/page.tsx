@@ -87,7 +87,11 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
   const [unlocked, setUnlocked] = useState<{ url: string; size: number } | null>(null);
   const [unlockError, setUnlockError] = useState<string | null>(null);
 
+  // Pin the read + the event watch to Monad so they use the Monad public
+  // client regardless of the wallet's current chain — otherwise a wallet on
+  // Ethereum Mainnet makes the read throw "Chain eip155:1 is not configured".
   const { data: deal, isLoading, refetch, error: readErr } = useReadContract({
+    chainId: CHAIN_ID,
     address: HANDSHAKE_ESCROW_ADDRESS,
     abi: HANDSHAKE_ESCROW_ABI,
     functionName: "getDeal",
@@ -101,6 +105,7 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
   // Live-refresh on any escrow event touching this deal id.
   // (wagmi v3 watchContractEvent — server-side polling via the configured transport.)
   useWatchContractEvent({
+    chainId: CHAIN_ID,
     address: HANDSHAKE_ESCROW_ADDRESS,
     abi: HANDSHAKE_ESCROW_ABI,
     eventName: "Released",

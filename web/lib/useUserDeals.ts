@@ -6,6 +6,7 @@ import type { Abi, ContractFunctionArgs, ContractFunctionName } from "viem";
 import {
   HANDSHAKE_ESCROW_ADDRESS,
   HANDSHAKE_ESCROW_ABI,
+  CHAIN_ID,
 } from "./contract";
 
 /**
@@ -61,7 +62,14 @@ function toSummary(id: bigint, t: DealTuple): DealSummary {
 }
 
 export function useUserDeals(address: `0x${string}` | undefined) {
+  // Pin every read to Monad testnet so the multicall hits the Monad RPC
+  // regardless of which chain the connected wallet currently sits on.
+  // Without this, a wallet on Ethereum Mainnet (chain 1) makes wagmi route
+  // the read through the connector client on chain 1, and viem rejects it
+  // ("Chain eip155:1 is not configured in supportedNetworks") before any
+  // button is ever clicked.
   const { data: countData, isLoading: countLoading } = useReadContracts({
+    chainId: CHAIN_ID,
     contracts: [
       {
         address: HANDSHAKE_ESCROW_ADDRESS,
@@ -90,6 +98,7 @@ export function useUserDeals(address: `0x${string}` | undefined) {
   }, [count]);
 
   const { data: dealsData, isLoading: dealsLoading } = useReadContracts({
+    chainId: CHAIN_ID,
     contracts: calls,
     allowFailure: false,
     query: { enabled: calls.length > 0 },

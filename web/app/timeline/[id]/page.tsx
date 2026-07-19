@@ -26,6 +26,7 @@ import {
   HANDSHAKE_ESCROW_ABI,
   formatUsdc,
   DEAL_STATE_LABELS,
+  CHAIN_ID,
 } from "@/lib/contract";
 import { txLink } from "@/lib/monad";
 
@@ -120,13 +121,16 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
     dealId = null;
   }
 
-  const publicClient = usePublicClient();
+  // Pin the public client to Monad so getLogs runs against the Monad RPC
+  // regardless of the wallet's current chain.
+  const publicClient = usePublicClient({ chainId: CHAIN_ID });
   const { isConnected } = useAccount();
   const [events, setEvents] = useState<EventRow[] | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
   const [scenario, setScenario] = useState<string>("happy");
 
   const { data: deal, isLoading } = useReadContract({
+    chainId: CHAIN_ID,
     address: HANDSHAKE_ESCROW_ADDRESS,
     abi: HANDSHAKE_ESCROW_ABI,
     functionName: "getDeal",

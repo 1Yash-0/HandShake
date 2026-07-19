@@ -67,7 +67,10 @@ function CreateDealInner() {
   const [mintedAmount, setMintedAmount] = useState<bigint | null>(null);
 
   // Read current MockUSDC balance for the connected wallet — honest display.
+  // Pin the read to Monad so the balance lookup hits the Monad RPC even when
+  // the wallet is on another chain (writes still auto-switch via ensureMonad).
   const { data: usdcBalance, refetch: refetchBalance } = useReadContract({
+    chainId: CHAIN_ID,
     address: MOCK_USDC_ADDRESS,
     abi: MOCK_USDC_ABI,
     functionName: "balanceOf",
@@ -77,6 +80,7 @@ function CreateDealInner() {
 
   // Read current deal count — used to derive the new deal id after create.
   const { data: dealCount, refetch: refetchDealCount } = useReadContract({
+    chainId: CHAIN_ID,
     address: HANDSHAKE_ESCROW_ADDRESS,
     abi: HANDSHAKE_ESCROW_ABI,
     functionName: "dealCount",
