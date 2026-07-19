@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     blob = await put(pathname, text, {
       access: "private",
       addRandomSuffix: false,
+      allowOverwrite: true,
       contentType: "application/json",
     });
   } catch (err) {

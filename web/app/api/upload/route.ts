@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
     blob = await put(pathname, body, {
       access: "private",
       addRandomSuffix: false,
+      allowOverwrite: true,
       contentType: "application/octet-stream",
     });
   } catch (err) {
