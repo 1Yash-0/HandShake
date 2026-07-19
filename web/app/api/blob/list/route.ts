@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const dealId = url.searchParams.get("dealId");
   if (!dealId) return NextResponse.json({ error: "missing dealId" }, { status: 400 });
 
-  const { list } = await import("@vercel/blob");
+  const { list, issueSignedToken, presignUrl } = await import("@vercel/blob");
   let listed;
   try {
     listed = await list({
@@ -41,5 +41,29 @@ export async function GET(req: NextRequest) {
   if (bins.length === 0) {
     return NextResponse.json({ error: "no ciphertext blob for this deal" }, { status: 404 });
   }
-  return NextResponse.json({ url: bins[0].url, pathname: bins[0].pathname });
+
+  // Private store: the raw blob URL isn't fetchable from the browser. Issue a
+  // short-lived signed token scoped to this pathname, presign a GET URL, and
+  // hand that to the client. The unlock flow fetches this URL in the browser.
+  const target = bins[0];
+  try {
+    const token = await issueSignedToken({
+      pathname: target.pathname,
+      operations: ["get"],
+      validUntil: Date.now() + 60 * 60 * 1000, // 1 hour
+    });
+    const { presignedUrl } = await presignUrl(token, {
+      operation: "get",
+      pathname: target.pathname,
+      access: "private",
+    });
+    return NextResponse.json({ url: presignedUrl, pathname: target.pathname });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[blob/list] sign failed:", msg);
+    return NextResponse.json(
+      { error: `blob sign failed: ${msg}` },
+      { status: 502 },
+    );
+  }
 }
