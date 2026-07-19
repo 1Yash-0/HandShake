@@ -6,7 +6,6 @@ import {
   useAccount,
   useReadContract,
   useWriteContract,
-  useChainId,
   usePublicClient,
 } from "wagmi";
 import {
@@ -37,6 +36,7 @@ import {
   sha256Hex,
 } from "@/lib/crypto";
 import { conciseWalletError } from "@/lib/walletError";
+import { useEnsureMonad } from "@/lib/ensureMonad";
 
 /**
  * Freelancer handoff page — `/handoff/<id>`. This is where the magic happens:
@@ -76,7 +76,7 @@ function HandoffInner({ params }: { params: Promise<{ id: string }> }) {
   }
 
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const { onWrongChain, ensureMonad } = useEnsureMonad(isConnected);
   const publicClient = usePublicClient({ chainId: CHAIN_ID });
   const { writeContractAsync } = useWriteContract();
 
@@ -128,7 +128,6 @@ function HandoffInner({ params }: { params: Promise<{ id: string }> }) {
     [deal],
   );
 
-  const onWrongChain = isConnected && chainId !== CHAIN_ID;
   const isFreelancer = isConnected && !!address && !!d && address.toLowerCase() === d.freelancer.toLowerCase();
   const preparedMatchesReview = !!preparedDelivery
     && d?.state === DealState.UnderReview
@@ -168,11 +167,21 @@ function HandoffInner({ params }: { params: Promise<{ id: string }> }) {
     setError(null);
     if (!file || !canSubmit || dealId === null) return;
 
-    // Hard guard: never encrypt or touch storage while the wallet isn't on
-    // Monad. canSubmit already disables the button, but this defends against
-    // a chain switch between render and click.
+    // Hard guard: if the wallet isn't on Monad, auto-switch it first rather
+    // than bailing. canSubmit already disables the button when wrong-chain,
+    // but this defends against a chain switch between render and click and
+    // makes a wrong-chain click helpful (MetaMask prompts to switch).
     if (onWrongChain) {
-      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to submit.`);
+      try {
+        await ensureMonad();
+      } catch (err) {
+        console.error("chain switch rejected", err);
+        setError(conciseWalletError(err));
+        return;
+      }
+      // Switch succeeded — the wallet will report the new chainId on the next
+      // render, which re-enables the button. Tell the user to click again.
+      setError(`Switched to Monad testnet — click Encrypt & submit again.`);
       return;
     }
 

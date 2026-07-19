@@ -7,7 +7,6 @@ import {
   useAccount,
   useWriteContract,
   useReadContract,
-  useChainId,
 } from "wagmi";
 import { ArrowLeft, Coins, Loader2, Plus, ShieldCheck, Sparkles } from "lucide-react";
 import { Topbar } from "@/components/Topbar";
@@ -22,6 +21,7 @@ import {
 } from "@/lib/contract";
 import { monadTestnet } from "@/lib/monad";
 import { conciseWalletError } from "@/lib/walletError";
+import { useEnsureMonad } from "@/lib/ensureMonad";
 
 /**
  * Create-deal page. The first real wagmi write screen.
@@ -51,7 +51,7 @@ export default function CreateDealPage() {
 function CreateDealInner() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const { onWrongChain, ensureMonad, chainId } = useEnsureMonad(isConnected);
   const { writeContractAsync } = useWriteContract();
 
   const [form, setForm] = useState({
@@ -82,8 +82,6 @@ function CreateDealInner() {
     functionName: "dealCount",
   });
 
-  const onWrongChain = isConnected && chainId !== CHAIN_ID;
-
   function update<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
   }
@@ -92,7 +90,14 @@ function CreateDealInner() {
     if (!address) return;
     setError(null);
     if (onWrongChain) {
-      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to mint.`);
+      try {
+        await ensureMonad();
+      } catch (err) {
+        console.error("chain switch rejected", err);
+        setError(conciseWalletError(err));
+        return;
+      }
+      setError(`Switched to Monad testnet — click Mint again.`);
       return;
     }
     setMinting(true);
@@ -128,7 +133,14 @@ function CreateDealInner() {
       return;
     }
     if (onWrongChain) {
-      setError("Switch to Monad testnet in your wallet.");
+      try {
+        await ensureMonad();
+      } catch (err) {
+        console.error("chain switch rejected", err);
+        setError(conciseWalletError(err));
+        return;
+      }
+      setError(`Switched to Monad testnet — click Create deal again.`);
       return;
     }
     const freelancer = form.freelancer.trim() as `0x${string}`;

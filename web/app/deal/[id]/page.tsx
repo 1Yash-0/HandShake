@@ -6,7 +6,6 @@ import {
   useAccount,
   useReadContract,
   useWriteContract,
-  useChainId,
   useWatchContractEvent,
 } from "wagmi";
 import {
@@ -40,6 +39,7 @@ import { addressLink } from "@/lib/monad";
 import { importKeyRaw, decryptFile } from "@/lib/crypto";
 import { useSession } from "@/lib/auth";
 import { conciseWalletError } from "@/lib/walletError";
+import { useEnsureMonad } from "@/lib/ensureMonad";
 
 /**
  * Client deal page — `/deal/<id>`. Reads deal state via `getDeal(id)` and
@@ -77,7 +77,7 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
   }
 
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const { onWrongChain, ensureMonad } = useEnsureMonad(isConnected);
   const { writeContractAsync } = useWriteContract();
   const session = useSession();
 
@@ -108,8 +108,6 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
       if (dealId !== null) void refetch();
     },
   });
-
-  const onWrongChain = isConnected && chainId !== CHAIN_ID;
 
   // Tuple return of HandshakeEscrow.getDeal — see contracts/src/HandshakeEscrow.sol.
   type DealTuple = readonly [
@@ -196,7 +194,14 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
   async function fund() {
     setError(null);
     if (onWrongChain) {
-      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to fund.`);
+      try {
+        await ensureMonad();
+      } catch (err) {
+        console.error("chain switch rejected", err);
+        setError(conciseWalletError(err));
+        return;
+      }
+      setError(`Switched to Monad testnet — click Fund again.`);
       return;
     }
     setSubmitting("fund");
@@ -222,7 +227,14 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
   async function approve() {
     setError(null);
     if (onWrongChain) {
-      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to approve.`);
+      try {
+        await ensureMonad();
+      } catch (err) {
+        console.error("chain switch rejected", err);
+        setError(conciseWalletError(err));
+        return;
+      }
+      setError(`Switched to Monad testnet — click Approve again.`);
       return;
     }
     setSubmitting("approve");
@@ -248,7 +260,14 @@ export default function DealPage({ params }: { params: Promise<{ id: string }> }
   async function dispute() {
     setError(null);
     if (onWrongChain) {
-      setError(`Switch to Monad testnet (id ${CHAIN_ID}) in your wallet to dispute.`);
+      try {
+        await ensureMonad();
+      } catch (err) {
+        console.error("chain switch rejected", err);
+        setError(conciseWalletError(err));
+        return;
+      }
+      setError(`Switched to Monad testnet — click Dispute again.`);
       return;
     }
     setSubmitting("dispute");
