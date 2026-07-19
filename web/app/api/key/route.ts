@@ -31,16 +31,33 @@ const client = createPublicClient({
 // Re-exported here so the route doesn't need the Blob SDK on the read path.
 // Returns the key bytes on success, or `{ error }` on failure so the caller
 // can surface the actual cause (token missing, store down, fetch failed).
+//
+// Private store: the raw blob URL from list() isn't fetchable. We issue a
+// short-lived signed token and presign a GET URL before fetching the bytes
+// server-side. This is server-to-server (the API route to Blob), so the
+// signed URL never reaches the browser — but it's required for the fetch to
+// succeed against a private store.
 async function fetchKeyFromBlob(
   dealId: string,
 ): Promise<Uint8Array | { error: string } | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return { error: "BLOB_READ_WRITE_TOKEN not configured" };
   try {
-    const { list } = await import("@vercel/blob");
+    const { list, issueSignedToken, presignUrl } = await import("@vercel/blob");
     const listed = await list({ prefix: `handshake/keys/deal-${dealId}.key`, token });
     if (listed.blobs.length === 0) return null;
-    const res = await fetch(listed.blobs[0].url);
+    const target = listed.blobs[0];
+    const signedToken = await issueSignedToken({
+      pathname: target.pathname,
+      operations: ["get"],
+      validUntil: Date.now() + 60 * 1000, // 1 minute — server-side fetch is immediate
+    });
+    const { presignedUrl } = await presignUrl(signedToken, {
+      operation: "get",
+      pathname: target.pathname,
+      access: "private",
+    });
+    const res = await fetch(presignedUrl);
     if (!res.ok) return { error: `blob fetch http ${res.status}` };
     const buf = new Uint8Array(await res.arrayBuffer());
     return buf;

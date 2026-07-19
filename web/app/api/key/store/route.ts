@@ -39,11 +39,12 @@ export async function POST(req: NextRequest) {
   const pathname = `handshake/keys/deal-${dealId}.key`;
   // The returned URL is intentionally unused — the key is only ever read back
   // via GET /api/key (which fetches the deterministic path, not the returned
-  // URL). Keeping `access: "public"` because Blob requires it for put(), but
-  // the raw bytes are inert until the onchain Released gate opens.
+  // URL). `access: "private"` matches our private Blob store; the raw bytes
+  // are inert without the onchain Released gate opening (which GET /api/key
+  // verifies server-side before releasing them to the client).
   try {
     await put(pathname, body, {
-      access: "public",
+      access: "private",
       addRandomSuffix: false,
       contentType: "application/octet-stream",
     });
