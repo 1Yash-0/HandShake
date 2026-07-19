@@ -18,7 +18,7 @@
   --surface: oklch(98% .01 274);         /* was oklch(98% .012 92) — cream → blue-tinted */
   --surface-2: oklch(95% .015 274);      /* was oklch(94.5% .018 92) */
   --surface-3: oklch(92% .02 274);       /* new — for recessed areas */
-  --line: oklch(86% .018 278);
+  --line: oklch(82% .02 278);          /* was 86% — darker for the soft neo-brutalist edge */
 
   /* Brand accents */
   --blue: oklch(51% .22 274);
@@ -34,6 +34,16 @@
   --shadow-sm: 0 2px 8px oklch(28% .04 278 / .08);
   --shadow-md: 0 8px 30px oklch(28% .04 278 / .10);
   --shadow-lg: 0 18px 50px oklch(28% .04 278 / .12);
+
+  /* Neo-brutalist offset shadows — solid ink, zero blur, 88% opacity (soft, not
+     jet-black). Applied to interactive surfaces (cards, panes, buttons, rows).
+     Hover lifts the surface -2px,-2px and grows the shadow; active presses back
+     to 0,0 and drops the shadow — the signature "stamps off the paper" move.
+     The --shadow-offset-blue variant carries the brand accent on the hero core. */
+  --shadow-offset:      3px 3px 0 oklch(20% .035 278 / .88);
+  --shadow-offset-sm:   2px 2px 0 oklch(20% .035 278 / .88);
+  --shadow-offset-lg:   6px 6px 0 oklch(20% .035 278 / .88);
+  --shadow-offset-blue: 5px 5px 0 oklch(51% .22 274 / .30);
   --r-sm: 10px;
   --r: 16px;        /* was 18px — at the codex ceiling */
   --r-lg: 20px;
@@ -195,41 +205,47 @@ a { color: inherit; }
   font-family: var(--font-sans);
   letter-spacing: -.01em;
   cursor: pointer;
-  transition: transform .15s var(--ease), background .15s, color .15s, border-color .15s;
+  /* transform + box-shadow transition together so the stamp + lift read as one motion */
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease), background .15s, color .15s, border-color .15s;
   white-space: nowrap;
   text-decoration: none;
   font-size: .9375rem;
 }
 
-.btn:hover { transform: translateY(-1px); }
-.btn:active { transform: translateY(0) scale(.97); }
+/* Solid-color buttons get the offset-shadow stamp; ghost/soft stay flat.
+   Hover lifts the surface -2px,-2px and grows the shadow; active presses back
+   to 0,0 and drops it — the "stamps off the paper" neo-brutalist move. */
+.btn:hover { transform: translate(-1px, -1px); }
+.btn:active { transform: translate(0, 0) scale(.98); }
 
-.btn-dark { background: var(--ink); color: var(--surface); }
-.btn-dark:hover { background: oklch(28% .05 278); }
+.btn-dark { background: var(--ink); color: var(--surface); box-shadow: var(--shadow-offset-sm); }
+.btn-dark:hover { background: oklch(28% .05 278); box-shadow: var(--shadow-offset); }
 
-.btn-blue { background: var(--blue); color: oklch(98% .01 274); }
-.btn-blue:hover { background: var(--blue-dark); }
+.btn-blue { background: var(--blue); color: oklch(98% .01 274); box-shadow: var(--shadow-offset-sm); }
+.btn-blue:hover { background: var(--blue-dark); box-shadow: var(--shadow-offset); }
 
-.btn-lime { background: var(--lime); color: oklch(25% .07 115); }
-.btn-lime:hover { background: oklch(82% .19 115); }
+.btn-lime { background: var(--lime); color: oklch(25% .07 115); box-shadow: var(--shadow-offset-sm); }
+.btn-lime:hover { background: oklch(82% .19 115); box-shadow: var(--shadow-offset); }
 
 .btn-soft {
   background: var(--surface-2);
   color: var(--ink);
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
 }
-.btn-soft:hover { background: var(--surface-3); }
+.btn-soft:hover { background: var(--surface-3); transform: translate(-1px, -1px); box-shadow: var(--shadow-offset-sm); }
 
 .btn-danger {
   background: oklch(94% .04 24);
   color: var(--red);
-  border: 1px solid oklch(84% .08 24);
+  border: 1.5px solid oklch(78% .10 24);
+  box-shadow: var(--shadow-offset-sm);
 }
+.btn-danger:hover { box-shadow: var(--shadow-offset); }
 
 .btn-ghost {
   background: transparent;
   color: var(--muted);
-  border: 1px solid transparent;
+  border: 1.5px solid transparent;
 }
 .btn-ghost:hover { color: var(--ink); background: var(--surface-2); }
 
@@ -237,6 +253,7 @@ a { color: inherit; }
   opacity: .42;
   cursor: not-allowed;
   transform: none !important;
+  box-shadow: none !important;
 }
 
 /* ------------------------------------------------------------------- hero */
@@ -313,7 +330,9 @@ a { color: inherit; }
 
 .orbit {
   position: absolute;
-  border: 1.5px dashed var(--line);
+  /* Soft neo-brutalism: solid ink ring (was dashed) — more mechanical,
+     more present. Two node-dots travel with the rotation (see .orbit-nodes). */
+  border: 2px solid var(--ink);
   border-radius: 50%;
   animation: orbit 18s linear infinite;
 }
@@ -329,9 +348,38 @@ a { color: inherit; }
 .orbit.one { width: 540px; height: 540px; }
 .orbit.two { width: 380px; height: 380px; animation-duration: 12s; animation-direction: reverse; }
 
+/* Node dots — 4 per ring, evenly spaced, traveling with the ring's rotation.
+   They read as the "balls orbiting" but made deliberate: solid ink circles,
+   fixed size, counter-rotated so they stay circular (not smeared) as the
+   ring spins. The ring rotates the wrapper; the dots sit on the ring's edge. */
+.orbit-nodes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.orbit-node {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink);
+  top: 50%;
+  left: 50%;
+  margin: -5px 0 0 -5px;
+  /* Place each dot on the ring's circumference via a per-dot CSS var (--a, angle).
+     The dot is translated out by the ring's radius, then rotated around center. */
+  transform: rotate(var(--a, 0deg)) translateX(var(--r, 270px));
+}
+.orbit.two .orbit-node {
+  background: var(--blue);
+  transform: rotate(var(--a, 0deg)) translateX(var(--r, 190px));
+}
+
 @media (max-width: 900px) {
   .orbit.one { width: 380px; height: 380px; }
   .orbit.two { width: 260px; height: 260px; }
+  .orbit.one .orbit-node { --r: 190px; }
+  .orbit.two .orbit-node { --r: 130px; }
 }
 
 @keyframes orbit { to { transform: rotate(360deg) } }
@@ -347,7 +395,12 @@ a { color: inherit; }
   text-align: center;
   position: relative;
   z-index: 2;
-  box-shadow: var(--shadow-lg);
+  /* Soft neo-brutalism: 2px ink border outside the disk + a blue offset
+     shadow — the "125 USDC" stamps off the page in the brand accent. The
+     drop shadow stays (shadow-lg) for floating depth; the offset is the
+     signature. */
+  border: 2px solid var(--ink);
+  box-shadow: var(--shadow-offset-blue), var(--shadow-lg);
   animation: coreIn .8s var(--ease) both;
 }
 
@@ -358,6 +411,17 @@ a { color: inherit; }
 @keyframes coreIn {
   from { transform: scale(.8); opacity: 0 }
   to   { transform: scale(1);  opacity: 1 }
+}
+
+/* Price lands with a tiny scale-pop once the count-up finishes — the
+   EscrowPrice component toggles .core-price.done after the rAF completes. */
+.core-price.done {
+  animation: priceLand .4s var(--ease);
+}
+@keyframes priceLand {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.04); }
+  100% { transform: scale(1); }
 }
 
 .core-label {
@@ -390,7 +454,10 @@ a { color: inherit; }
 .float-card {
   position: absolute;
   background: var(--surface);
-  border: 1px solid var(--line);        /* border, no shadow — no ghost-card */
+  /* Soft neo-brutalism: 1.5px ink border + offset shadow — the float cards
+     stamp off the orbit like the rest of the surfaces. Border-only was the
+     original (no ghost-card), now it's border + offset (still no blur). */
+  border: 1.5px solid var(--ink);
   border-radius: var(--r);
   padding: 10px 14px;
   display: flex;
@@ -399,6 +466,7 @@ a { color: inherit; }
   font-size: .8125rem;
   font-weight: 600;
   z-index: 3;
+  box-shadow: var(--shadow-offset-sm);
   animation: float 4s ease-in-out infinite;
 }
 
@@ -493,10 +561,16 @@ a { color: inherit; }
 }
 
 .versus-card {
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r);
   padding: 24px;
   background: var(--surface);
+  box-shadow: var(--shadow-offset-sm);
+  transition: transform .2s var(--ease), box-shadow .2s var(--ease);
+}
+.versus-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-offset);
 }
 
 .versus-card.bad { background: oklch(96% .03 24); }
@@ -529,7 +603,7 @@ a { color: inherit; }
 }
 
 .flow-step {
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r);
   padding: 28px 24px;
   background: var(--surface);
@@ -537,6 +611,14 @@ a { color: inherit; }
   gap: 12px;
   align-content: start;
   min-height: 200px;
+  /* Soft neo-brutalist stamp — offset shadow on rest, lifts + grows on hover.
+     The flow-stamp motion in page.tsx adds the scale/rotate entrance. */
+  box-shadow: var(--shadow-offset-sm);
+  transition: transform .2s var(--ease), box-shadow .2s var(--ease);
+}
+.flow-step:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-offset);
 }
 
 .flow-step .step-num { font-size: .75rem; }
@@ -608,10 +690,16 @@ a { color: inherit; }
 }
 
 .rule-case {
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r);
   padding: 24px;
   background: var(--surface);
+  box-shadow: var(--shadow-offset-sm);
+  transition: transform .2s var(--ease), box-shadow .2s var(--ease);
+}
+.rule-case:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-offset);
 }
 
 .rule-case.tall { grid-row: span 2; }
@@ -643,8 +731,13 @@ a { color: inherit; }
 .cta-box {
   background: var(--ink);
   color: var(--surface);
+  /* Neo-brutalist pop on a dark surface: a colored offset shadow (not an
+     ink one — ink wouldn't read against the dark fill). The blue offset ties
+     the closing CTA back to the orbit's blue nodes in the hero. */
+  border: 1.5px solid oklch(35% .04 278);
   border-radius: var(--r-lg);
   padding: 56px;
+  box-shadow: var(--shadow-offset-blue), var(--shadow-lg);
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
@@ -665,6 +758,26 @@ a { color: inherit; }
 }
 
 .cta-box p { color: oklch(72% .02 278); margin: 8px 0 0; font-size: .9375rem; }
+
+/* Ambient breathing layer for the CTA — a soft radial highlight that drifts
+   across the dark surface. 12s loop, ease-in-out alternate. Subtle life, not
+   distracting. Rendered as an absolutely-positioned overlay by the CtaBox
+   component; hidden under prefers-reduced-motion (the component just doesn't
+   render the layer at all). The keyframe stays here so it's cacheable. */
+@keyframes ctaBreathe {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate3d(8%, 6%, 0) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(-6%, -4%, 0) scale(1.08);
+    opacity: 0.8;
+  }
+}
 
 /* ------------------------------------------------------------------ footer */
 
@@ -722,12 +835,13 @@ footer a:hover { color: var(--ink); }
 /* ------------------------------------------------------- deal card (app) */
 
 .deal-card {
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r-lg);
   padding: 32px;
   background: var(--surface);
   display: grid;
   gap: 24px;
+  box-shadow: var(--shadow-offset-sm);
 }
 
 .deal-stat {
@@ -956,10 +1070,15 @@ footer a:hover { color: var(--ink); }
   cursor: pointer;
   font: inherit;
   color: inherit;
-  transition: transform .25s var(--ease), background .25s, border-color .25s;
-  border: 1px solid var(--line);
+  /* Soft neo-brutalism: offset shadow stamps the pane off the page; hover lifts
+     -2px,-2px and grows the shadow (matches the button/card surface language).
+     The original translateY(-2px) hover is replaced with the diagonal lift so
+     it reads WITH the shadow, not against it. */
+  border: 1.5px solid var(--line);
   background: var(--surface);
+  box-shadow: var(--shadow-offset);
   overflow: hidden;
+  transition: transform .25s var(--ease), background .25s, border-color .25s, box-shadow .25s var(--ease);
 }
 
 .role-pane::before {
@@ -968,32 +1087,53 @@ footer a:hover { color: var(--ink); }
   inset: 0;
   border-radius: inherit;
   opacity: 0;
-  transition: opacity .25s;
+  transition: opacity .3s var(--ease);
   pointer-events: none;
 }
 
-.role-pane:hover { transform: translateY(-2px); }
+.role-pane:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-offset-lg);
+  border-color: var(--ink);
+}
 .role-pane:focus-visible {
   outline: none;
   border-color: var(--blue);
-  box-shadow: 0 0 0 3px oklch(51% .22 274 / .15);
+  box-shadow: 0 0 0 3px oklch(51% .22 274 / .15), var(--shadow-offset);
 }
 
+/* Equal presence, peer class. The earlier version had the client pane at
+   97%/.03 — nearly the same as the white page surface (98%/.01), so the
+   client card vanished into the background while the warm-gold freelancer
+   read as the only "real" card. That read as the client being lower-class.
+
+   Two fixes:
+   1. REST backgrounds are now clearly tinted cards, not white. The client
+      gets a confident pale blue (93% lightness, .08 chroma — visibly a blue
+      card against the 98%/.01 page). The freelancer is toned to a soft gold
+      (95%/.05 — lighter and lower-chroma than the client) because warm
+      yellow-gold perceptually reads as more luminous than cool blue at equal
+      chroma; giving blue a touch more chroma + a touch less lightness
+      compensates so the two cards land at equal perceived presence.
+   2. Hover glows stay bottom-left on both (the freelancer's golden glow is a
+      feature the user loves — we keep it and give the client an equally rich
+      blue one). Client glow chroma is bumped .10→.12 so the blue hover glow
+      is as saturated as the gold. */
 .role-pane-client {
   background:
-    linear-gradient(180deg, oklch(97% .03 274) 0%, var(--surface) 70%);
+    linear-gradient(180deg, oklch(93% .08 274) 0%, var(--surface) 72%);
 }
 .role-pane-client::before {
-  background: radial-gradient(400px 200px at 100% 0%, oklch(94% .06 274 / .8), transparent 70%);
+  background: radial-gradient(420px 240px at 0% 100%, oklch(94% .12 274 / .85), transparent 70%);
 }
 .role-pane-client:hover::before { opacity: 1; }
 
 .role-pane-freelancer {
   background:
-    linear-gradient(180deg, oklch(97% .04 115) 0%, var(--surface) 70%);
+    linear-gradient(180deg, oklch(95% .05 115) 0%, var(--surface) 72%);
 }
 .role-pane-freelancer::before {
-  background: radial-gradient(400px 200px at 0% 100%, oklch(94% .09 115 / .7), transparent 70%);
+  background: radial-gradient(420px 240px at 0% 100%, oklch(94% .10 115 / .80), transparent 70%);
 }
 .role-pane-freelancer:hover::before { opacity: 1; }
 
@@ -1012,8 +1152,14 @@ footer a:hover { color: var(--ink); }
   background: var(--ink);
   color: var(--lime);
 }
+/* The two marks are now structural peers: same lightness (60%), same chroma
+   (.15), differing only in hue (client 274 blue, freelancer 115 gold). The
+   client mark was previously var(--blue) = oklch(51% .22 274) — dark and cold,
+   which read as heavier/corporate next to the freelancer's warm medium gold.
+   Matching L+C across hues makes the two sides read as the same "class",
+   just different color. */
 .role-pane-client .role-pane-mark {
-  background: var(--blue);
+  background: oklch(60% .15 274);
   color: oklch(98% .01 274);
 }
 .role-pane-freelancer .role-pane-mark {
@@ -1065,7 +1211,7 @@ footer a:hover { color: var(--ink); }
   border-radius: 50%;
   margin-top: 9px;
   flex: none;
-  background: var(--blue);
+  background: oklch(60% .15 274);
 }
 .role-pane-freelancer .role-pane-bullet {
   background: oklch(60% .15 115);
@@ -1077,7 +1223,7 @@ footer a:hover { color: var(--ink); }
   gap: 8px;
   font-weight: 600;
   font-size: .875rem;
-  color: var(--blue);
+  color: oklch(45% .12 274);
   margin-top: 8px;
   transition: gap .2s var(--ease);
 }
@@ -1108,17 +1254,20 @@ footer a:hover { color: var(--ink); }
   display: grid;
   place-items: center;
   border: 4px solid var(--surface);
+  /* Soft neo-brutalism: tiny offset shadow so the axis mark stamps too. */
+  box-shadow: var(--shadow-offset-sm);
 }
 
 /* ── wallet connect panel ──────────────────────────────────────────── */
 
 .connect-panel {
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r-lg);
   padding: 32px;
   display: grid;
   gap: 24px;
   background: var(--surface);
+  box-shadow: var(--shadow-offset);
 }
 
 .connect-panel-head {
@@ -1219,16 +1368,22 @@ footer a:hover { color: var(--ink); }
   align-items: center;
   gap: 9px;
   padding: 6px 10px 6px 6px;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r-pill);
   background: var(--surface);
   cursor: pointer;
   font: inherit;
   color: inherit;
-  transition: background .15s, border-color .15s;
+  transition: background .15s, border-color .15s, transform .18s var(--ease), box-shadow .18s var(--ease);
   min-height: 36px;
+  box-shadow: var(--shadow-offset-sm);
 }
-.role-badge-trigger:hover { background: var(--surface-2); border-color: oklch(80% .03 278); }
+.role-badge-trigger:hover {
+  background: var(--surface-2);
+  border-color: var(--ink);
+  transform: translate(-1px, -1px);
+  box-shadow: var(--shadow-offset);
+}
 
 .role-badge-icon {
   width: 26px;
@@ -1269,9 +1424,11 @@ footer a:hover { color: var(--ink); }
   right: 0;
   z-index: 50;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--ink);
   border-radius: var(--r);
-  box-shadow: var(--shadow-md);
+  /* Soft neo-brutalism: offset shadow replaces the soft blur shadow — the
+     menu stamps off the badge, matches the rest of the surfaces. */
+  box-shadow: var(--shadow-offset);
   min-width: 220px;
   padding: 6px;
   display: grid;
@@ -1357,9 +1514,10 @@ footer a:hover { color: var(--ink); }
   display: grid;
   gap: 4px;
   padding: 20px;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r);
   background: var(--surface);
+  box-shadow: var(--shadow-offset-sm);
 }
 .dash-stat-label {
   font-size: .6875rem;
@@ -1457,22 +1615,31 @@ footer a:hover { color: var(--ink); }
   grid-template-columns: 1fr auto;
   gap: 16px;
   padding: 18px 20px;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r);
   background: var(--surface);
   text-decoration: none;
   color: inherit;
-  transition: border-color .15s, background .15s, transform .15s var(--ease);
+  /* Soft neo-brutalism: offset shadow on rest, lift + grow on hover, drop on active.
+     The previous translateY(-1px) hover is replaced with the diagonal lift so
+     it reads with the shadow (not against it). */
+  box-shadow: var(--shadow-offset-sm);
+  transition: border-color .15s, background .15s, transform .18s var(--ease), box-shadow .18s var(--ease);
   align-items: center;
 }
 .deal-row:hover {
-  border-color: oklch(80% .03 278);
+  border-color: var(--ink);
   background: var(--surface-2);
-  transform: translateY(-1px);
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-offset);
+}
+.deal-row:active {
+  transform: translate(0, 0);
+  box-shadow: var(--shadow-offset-sm);
 }
 .deal-row:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px oklch(51% .22 274 / .15);
+  box-shadow: 0 0 0 3px oklch(51% .22 274 / .15), var(--shadow-offset-sm);
 }
 
 .deal-row-main {
@@ -1532,12 +1699,13 @@ footer a:hover { color: var(--ink); }
   justify-content: space-between;
   gap: 24px;
   padding: 16px 20px;
-  border: 1px solid var(--line);
+  border: 1.5px solid var(--line);
   border-radius: var(--r);
   background: var(--surface);
   margin-bottom: 24px;
   flex-wrap: wrap;
   position: relative;
+  box-shadow: var(--shadow-offset-sm);
 }
 
 .role-banner-client {
