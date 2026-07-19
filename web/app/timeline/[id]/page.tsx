@@ -7,7 +7,7 @@ import {
   useReadContract,
   usePublicClient,
 } from "wagmi";
-import type { Log } from "viem";
+import type { Log, AbiEvent } from "viem";
 import {
   ArrowLeft,
   Loader2,
@@ -77,7 +77,7 @@ const EDGE_SCENARIOS = [
     label: "Quality dispute",
     icon: <Users size={16} />,
     fn: "openDispute(id) → resolveDispute(id, outcome)",
-    from: "UnderReview → Disputed → Resolved",
+    from: "UnderReview → Disputed",
     to: "Resolved",
     desc: "Client opens a dispute; funds lock. The arbiter resolves with Release, Refund, or Split (50/50).",
   },
@@ -104,7 +104,7 @@ const EDGE_SCENARIOS = [
     label: "Happy path",
     icon: <CheckCircle2 size={16} />,
     fn: "create → fund → submit → approve → unlock",
-    from: "Created → Released",
+    from: "Created → Funded → UnderReview",
     to: "Released",
     desc: "The default flow you just ran: create, fund, encrypt + submit, approve, key release unlocks the original.",
   },
@@ -127,6 +127,10 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
   const { isConnected } = useAccount();
   const [events, setEvents] = useState<EventRow[] | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
+  // Soft, non-blocking note (amber) — used when we found some events but
+  // didn't reach DealCreated within the lookback window. Distinct from
+  // `logError` (red, blocking) so partial results still render.
+  const [note, setNote] = useState<string | null>(null);
   const [scenario, setScenario] = useState<string>("happy");
 
   const { data: deal, isLoading } = useReadContract({
@@ -160,44 +164,123 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
       }
     : null;
 
-  // Fetch logs once on mount and whenever the chain id changes.
+  // Fetch logs once on mount. Monad testnet's `eth_getLogs` rejects any query
+  // wider than a 100-block range, so we cannot ask for `fromBlock: 0, toBlock:
+  // latest` (the raw viem error for that also dumps the full request body —
+  // unusable as a UI message and the reason this page previously rendered a
+  // wall of text). Instead we walk backwards from the latest block in
+  // ≤99-block chunks, filtering by dealId in JS, and stop early once we find
+  // this deal's `DealCreated` event (the oldest event for the deal — once we
+  // have it, we have the full history for this deal). Per-chunk failures are
+  // swallowed so one bad range doesn't abort the whole fetch.
   useEffect(() => {
     if (!publicClient || dealId === null) return;
     let cancelled = false;
     (async () => {
       setLogError(null);
+      setNote(null);
       try {
-        const all = await publicClient.getLogs({
-          address: HANDSHAKE_ESCROW_ADDRESS,
-          events: HANDSHAKE_ESCROW_ABI,
-          fromBlock: 0n,
-          toBlock: "latest",
-          strict: false,
-        });
+        // Pass ONLY the event ABI entries to getLogs. viem's getLogs iterates
+        // each item in `events` and calls encodeEventTopics({ abi: [item],
+        // eventName: item.name }). For non-event items (the constructor at
+        // abi[0], functions, errors), item.name is undefined and
+        // abi[0].type !== 'event' throws AbiEventNotFoundError. Filtering to
+        // type === "event" first means only real events reach
+        // encodeEventTopics. The cast to AbiEvent[] is safe: we've just
+        // narrowed on item.type === "event".
+        const eventAbi = HANDSHAKE_ESCROW_ABI.filter(
+          (item) => item.type === "event",
+        ) as readonly AbiEvent[];
+
+        const latest = await publicClient.getBlockNumber();
+        const CHUNK = 99n; // under Monad's 100-block eth_getLogs cap
+        const CONCURRENCY = 6; // concurrent chunk requests (avoid RPC throttle)
+        const MAX_CHUNKS = 1500; // safety cap (~150k blocks ≈ 1-2 days)
+
+        const collected: Log[] = [];
+        let foundCreated = false;
+        let cursor = 0;
+
+        while (cursor < MAX_CHUNKS && !foundCreated) {
+          const batch: Promise<Log[] | null>[] = [];
+          for (let i = 0; i < CONCURRENCY && cursor < MAX_CHUNKS; i++, cursor++) {
+            const to = latest - BigInt(cursor) * CHUNK;
+            if (to < 0n) {
+              batch.push(Promise.resolve([]));
+              break;
+            }
+            const from = to - CHUNK + 1n;
+            const safeFrom = from < 0n ? 0n : from;
+            batch.push(
+              publicClient
+                .getLogs({
+                  address: HANDSHAKE_ESCROW_ADDRESS,
+                  events: eventAbi,
+                  fromBlock: safeFrom,
+                  toBlock: to,
+                  strict: false,
+                })
+                .catch(() => null),
+            );
+          }
+          const results = await Promise.all(batch);
+          for (const logs of results) {
+            if (!logs) continue;
+            for (const log of logs) {
+              const args = (log as { args?: Record<string, unknown> }).args ?? {};
+              // Every event has `id` indexed as the first topic (DealCreated,
+              // Funded, DeliverableSubmitted, Approved, Disputed, Resolved,
+              // Refunded, Released). Fall back to dealId for safety.
+              const idArg = (args.id ?? args.dealId) as bigint | undefined;
+              if (idArg === dealId) {
+                collected.push(log as Log);
+                if ((log as { eventName?: string }).eventName === "DealCreated") {
+                  // Oldest event for this deal — we now have the full history.
+                  foundCreated = true;
+                }
+              }
+            }
+          }
+        }
+
         if (cancelled) return;
-        // Filter by deal id arg. Every event has `id` indexed as the first topic
-        // (DealCreated, Funded, DeliverableSubmitted, Approved, Disputed,
-        // Resolved, Refunded, Released). For events without an indexed id, we
-        // fall back to scanning args.
-        const rows: EventRow[] = all
-          .map((log: Log) => {
-            const args = (log as { args?: Record<string, unknown> }).args ?? {};
-            const idArg = (args.id ?? args.dealId ?? args.dealId) as bigint | undefined;
-            return { log, idArg };
-          })
-          .filter(({ idArg }) => idArg === dealId)
-          .map(({ log }) => {
-            const args = (log as { args?: Record<string, unknown> }).args ?? {};
-            return {
-              name: (log as { eventName?: string }).eventName ?? "Unknown",
-              txHash: log.transactionHash ?? ("0x" as `0x${string}`),
-              blockNumber: log.blockNumber ?? 0n,
-              args,
-            };
-          });
-        if (!cancelled) setEvents(rows);
+
+        // Sort ascending by block number (oldest first = chronological order).
+        collected.sort((a, b) => {
+          const an = a.blockNumber ?? 0n;
+          const bn = b.blockNumber ?? 0n;
+          if (an < bn) return -1;
+          if (an > bn) return 1;
+          return 0;
+        });
+
+        const rows: EventRow[] = collected.map((log) => {
+          const args = (log as { args?: Record<string, unknown> }).args ?? {};
+          return {
+            name: (log as { eventName?: string }).eventName ?? "Unknown",
+            txHash: log.transactionHash ?? ("0x" as `0x${string}`),
+            blockNumber: log.blockNumber ?? 0n,
+            args,
+          };
+        });
+
+        setEvents(rows);
+        if (!foundCreated && rows.length > 0) {
+          setNote(
+            "Showing recent events — the deal’s creation is older than the scan window.",
+          );
+        }
       } catch (err) {
-        if (!cancelled) setLogError(err instanceof Error ? err.message : String(err));
+        // Never surface the raw viem error (it includes the full request body
+        // — a wall of JSON that overflows the card). Keep it in the console
+        // for diagnostics; show a concise message to the user.
+        console.error("timeline getLogs failed", err);
+        if (!cancelled) {
+          setLogError(
+            "Couldn’t fetch onchain events for this deal. Try again in a moment.",
+          );
+          setEvents([]);
+        }
       }
     })();
     return () => {
@@ -262,8 +345,14 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
               </div>
             )}
 
+            {note && !logError && (
+              <div className="pill pill-amber" style={{ alignSelf: "flex-start" }}>
+                <Clock size={12} /> {note}
+              </div>
+            )}
+
             {events === null && !logError && (
-              <div className="row text-muted"><Loader2 size={14} className="animate-spin" /> Fetching logs…</div>
+              <div className="row text-muted"><Loader2 size={14} className="animate-spin" /> Scanning onchain history…</div>
             )}
 
             {events !== null && events.length === 0 && (

@@ -19,7 +19,14 @@ type Props = {
  * "uniform fade-up on every section" tell from impeccable's
  * skill-motion-no-section-fade rule.
  *
- *   blur      — words start blurred + dim, sharpen left-to-right as you scroll
+ *   blur      — words start slightly blurred + dim, sharpen left-to-right as
+ *               you scroll, with a tiny lift (y:4→0). Reads as "focus" not
+ *               "appear": words are present at the start, just not in focus.
+ *               Polished timings: blur 4px→0, opacity 0.55→1, scrub width 0.18
+ *               (slower, more deliberate), scrub range 0.05→0.62 (starts
+ *               earlier, lands later — feels driven by the reader's scroll,
+ *               not rushed), ease-out-quart on blur+opacity+y (exponential).
+ *
  *   clip      — clip-path wipe from inset(0 100% 0 0) → inset(0 0 0 0)
  *   underline — fades in normally, but a 2px accent line draws scaleX(0)→1
  *
@@ -33,6 +40,12 @@ type Props = {
  * renders. Calling a hook and not consuming its value is fine; calling it
  * after an early return is the violation.
  */
+
+// ease-out-quart — exponential, per impeccable's motion rule. Maps a linear
+// 0..1 scrub progress to an eased 0..1 so the reveal front-loads the change
+// and decelerates into the final state (premium feel vs linear scrub).
+const easeOutQuart = (t: number) => 1 - Math.pow(1 - t, 4);
+
 export function ScrubbedText({
   children,
   personality,
@@ -104,8 +117,13 @@ export function ScrubbedText({
   return (
     <Tag className={className} ref={ref}>
       {words.map((word, i) => {
-        const start = 0.1 + (i / words.length) * 0.4;
-        const end = start + 0.12;
+        // Polished scrub range: start at 0.05 + (i/words.length)*0.57, width 0.18.
+        // Was 0.1 + (i/words.length)*0.4, width 0.12. The new range covers 0.05→0.62
+        // so the reveal starts earlier (as the section enters) and lands later
+        // (just past mid-scroll) — reads as driven by the reader's scroll, not
+        // finished before they arrive.
+        const start = 0.05 + (i / words.length) * 0.57;
+        const end = start + 0.18;
         return (
           <WordReveal
             key={i}
@@ -123,7 +141,7 @@ export function ScrubbedText({
 
 type ScrollProgress = ReturnType<typeof useScroll>["scrollYProgress"];
 
-/** Single word with its own blur-sharpen scrubbed to scroll progress. */
+/** Single word with its own blur-sharpen + lift scrubbed to scroll progress. */
 function WordReveal({
   word,
   start,
@@ -137,16 +155,24 @@ function WordReveal({
   progress: ScrollProgress;
   isLast: boolean;
 }) {
-  const blur = useTransform(progress, [start, end], [6, 0]);
+  // Two-stage transform: linear scrub progress → 0..1 → eased → final values.
+  // The eased stage applies ease-out-quart so the sharpen front-loads and
+  // decelerates into focus (premium vs a linear scrub).
+  const eased = useTransform(progress, [start, end], [0, 1]);
+  const easedOut = useTransform(eased, easeOutQuart);
+
+  const blur = useTransform(easedOut, [0, 1], [4, 0]);         // was 6 → 4
   const filter = useTransform(blur, (b) => `blur(${b}px)`);
-  const opacity = useTransform(progress, [start, end], [0.35, 1]);
+  const opacity = useTransform(easedOut, [0, 1], [0.55, 1]);   // was 0.35 → 0.55
+  const y = useTransform(easedOut, [0, 1], [4, 0]);            // NEW: tiny lift
   return (
     <motion.span
       style={{
         display: "inline-block",
         filter,
         opacity,
-        willChange: "filter, opacity",
+        y,
+        willChange: "filter, opacity, transform",
         marginRight: isLast ? 0 : "0.25em",
       }}
     >

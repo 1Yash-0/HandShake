@@ -27,10 +27,27 @@ export function EscrowOrbit() {
   return (
     <div className="handoff-stage" aria-label="Payment and encrypted file meet in escrow">
       <ParallaxLayer y={120} className="orbit-wrap">
-        <div className="orbit one" />
+        <div className="orbit one">
+          {/* 4 ink node dots traveling with the ring — the "balls orbiting"
+              made deliberate. Angles 0/90/180/270 place them on the cardinal
+              points; the ring's CSS rotation carries them around. */}
+          <div className="orbit-nodes">
+            <span className="orbit-node" style={{ ["--a" as string]: "0deg", ["--r" as string]: "270px" }} />
+            <span className="orbit-node" style={{ ["--a" as string]: "90deg", ["--r" as string]: "270px" }} />
+            <span className="orbit-node" style={{ ["--a" as string]: "180deg", ["--r" as string]: "270px" }} />
+            <span className="orbit-node" style={{ ["--a" as string]: "270deg", ["--r" as string]: "270px" }} />
+          </div>
+        </div>
       </ParallaxLayer>
       <ParallaxLayer y={90} className="orbit-wrap">
-        <div className="orbit two" />
+        <div className="orbit two">
+          <div className="orbit-nodes">
+            <span className="orbit-node" style={{ ["--a" as string]: "45deg", ["--r" as string]: "190px" }} />
+            <span className="orbit-node" style={{ ["--a" as string]: "135deg", ["--r" as string]: "190px" }} />
+            <span className="orbit-node" style={{ ["--a" as string]: "225deg", ["--r" as string]: "190px" }} />
+            <span className="orbit-node" style={{ ["--a" as string]: "315deg", ["--r" as string]: "190px" }} />
+          </div>
+        </div>
       </ParallaxLayer>
 
       <ParallaxLayer y={60} scale={0.92} className="core-wrap">
@@ -95,6 +112,7 @@ function EscrowPrice() {
 
     if (reduce) {
       span.textContent = "125";
+      span.classList.add("done");
       return;
     }
 
@@ -106,7 +124,13 @@ function EscrowPrice() {
     const tick = (now: number) => {
       const t = Math.min((now - startTime) / duration, 1);
       span.textContent = String(Math.round(ease(t) * 125));
-      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        // count-up done → fire the priceLand scale-pop (CSS keyframe on
+        // .core-price.done). Toggling the class triggers the animation.
+        span.classList.add("done");
+      }
     };
     // delay 400ms so the coreIn scale entrance lands first
     const timeout = setTimeout(() => {
